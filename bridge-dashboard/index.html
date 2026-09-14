@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="用于展示 GPT、Codex 与人工审批协作状态的静态控制看板原型。">
+  <title>AI 协作桥接看板</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070b17'/%3E%3Cpath d='M7 21V11m18 10V11M7 16h18' stroke='%237c9cff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='7' cy='16' r='3' fill='%234de3b6'/%3E%3Ccircle cx='25' cy='16' r='3' fill='%23ffbd69'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4f7ff;
+      --muted: #8c96ad;
+      --canvas: #070b17;
+      --panel: rgba(15, 22, 40, 0.78);
+      --line: rgba(138, 158, 205, 0.2);
+      --blue: #7c9cff;
+      --mint: #4de3b6;
+      --amber: #ffbd69;
+      --violet: #b18cff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 0%, rgba(74, 100, 198, 0.2), transparent 35%),
+        radial-gradient(circle at 85% 100%, rgba(77, 227, 182, 0.08), transparent 30%),
+        var(--canvas);
+      font-family: Inter, "Microsoft YaHei", "PingFang SC", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      content: "";
+      opacity: 0.18;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 80%);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 38px 0 56px;
+    }
+
+    .topbar,
+    .brand,
+    .agent-heading,
+    .status-row,
+    .timeline-item,
+    .next-action {
+      display: flex;
+      align-items: center;
+    }
+
+    .topbar {
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    .brand { gap: 13px; }
+
+    .mark {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid rgba(124, 156, 255, 0.32);
+      border-radius: 12px;
+      background: rgba(124, 156, 255, 0.1);
+      box-shadow: inset 0 0 24px rgba(124, 156, 255, 0.1);
+    }
+
+    .mark svg { width: 25px; height: 25px; }
+
+    h1,
+    h2,
+    p { margin: 0; }
+
+    h1 {
+      font-size: clamp(1.15rem, 3vw, 1.45rem);
+      letter-spacing: -0.03em;
+    }
+
+    .eyebrow,
+    .micro-label,
+    .role,
+    .status-pill,
+    .time {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow,
+    .micro-label,
+    .role,
+    .time { color: var(--muted); }
+
+    .eyebrow,
+    .micro-label { font-size: 0.75rem; }
+
+    .eyebrow { margin-top: 1px; }
+
+    .sync {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .sync::before {
+      width: 7px;
+      height: 7px;
+      content: "";
+      border-radius: 50%;
+      background: var(--mint);
+      box-shadow: 0 0 14px var(--mint);
+    }
+
+    .command-strip {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+      gap: 1px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--line);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.14);
+    }
+
+    .command-summary,
+    .command-meta {
+      min-width: 0;
+      background: rgba(10, 16, 31, 0.94);
+    }
+
+    .command-summary {
+      padding: 24px;
+      background:
+        linear-gradient(120deg, rgba(255,189,105,0.1), transparent 48%),
+        rgba(10, 16, 31, 0.94);
+    }
+
+    .bridge-state {
+      margin-top: 7px;
+      color: var(--amber);
+      font-size: clamp(1.5rem, 4vw, 2.35rem);
+      font-weight: 760;
+      line-height: 1.12;
+      letter-spacing: -0.045em;
+    }
+
+    .current-task-block {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .mission-value {
+      margin-top: 6px;
+      overflow-wrap: anywhere;
+      color: #dce2ef;
+      font-size: clamp(1rem, 2.3vw, 1.2rem);
+      font-weight: 680;
+      letter-spacing: -0.02em;
+    }
+
+    .command-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-content: center;
+      padding: 22px 24px;
+    }
+
+    .meta-item {
+      min-width: 0;
+      padding: 4px 18px;
+    }
+
+    .meta-item:first-child {
+      padding-left: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    .meta-value {
+      margin-top: 5px;
+      color: white;
+      font-size: 1.1rem;
+      font-weight: 720;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+
+    .agent-card {
+      position: relative;
+      min-width: 0;
+      padding: 24px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 25px 80px rgba(0,0,0,0.2);
+    }
+
+    .agent-card::after {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 130px;
+      height: 130px;
+      content: "";
+      border-radius: 50%;
+      filter: blur(60px);
+      pointer-events: none;
+    }
+
+    .agent-card.gpt::after { background: rgba(124, 156, 255, 0.25); }
+    .agent-card.codex::after { background: rgba(77, 227, 182, 0.2); }
+    .agent-card.human::after { background: rgba(255, 189, 105, 0.2); }
+
+    .agent-heading {
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 34px;
+    }
+
+    .agent-name {
+      font-size: clamp(1.65rem, 3vw, 2.35rem);
+      line-height: 1;
+      letter-spacing: -0.06em;
+    }
+
+    .role {
+      margin-top: 10px;
+      font-size: 0.75rem;
+    }
+
+    .agent-icon {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      color: var(--blue);
+      font-family: Georgia, serif;
+      font-size: 1.45rem;
+    }
+
+    .codex .agent-icon { color: var(--mint); }
+    .human .agent-icon { color: var(--amber); }
+
+    .status-row {
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .status-pill::before {
+      width: 8px;
+      height: 8px;
+      content: "";
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .reviewing { color: var(--violet); }
+    .completed { color: var(--mint); }
+    .running { color: var(--mint); }
+    .waiting { color: var(--amber); }
+    .working { color: var(--amber); }
+    .idle { color: var(--muted); }
+
+    .latest { padding-top: 20px; }
+
+    .latest p:last-child {
+      margin-top: 7px;
+      color: #dce2ef;
+      font-size: 1rem;
+    }
+
+    .lower-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+      gap: 18px;
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel {
+      padding: 26px 28px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(12, 18, 34, 0.72);
+    }
+
+    .panel h2 {
+      margin-bottom: 24px;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 19px;
+    }
+
+    .timeline::before {
+      position: absolute;
+      top: 8px;
+      bottom: 8px;
+      left: 66px;
+      width: 1px;
+      content: "";
+      background: var(--line);
+    }
+
+    .timeline-item {
+      position: relative;
+      gap: 28px;
+    }
+
+    .time {
+      width: 42px;
+      flex: 0 0 auto;
+      font-size: 0.75rem;
+    }
+
+    .event-dot {
+      z-index: 1;
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border: 2px solid var(--canvas);
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 3px rgba(124,156,255,0.18);
+    }
+
+    .timeline-item:nth-child(2) .event-dot,
+    .timeline-item:nth-child(3) .event-dot { background: var(--mint); }
+    .timeline-item:last-child .event-dot { background: var(--violet); }
+
+    .event-copy { color: #dce2ef; }
+    .event-copy strong { color: white; font-weight: 650; }
+
+    .next-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 225px;
+      background:
+        linear-gradient(145deg, rgba(177,140,255,0.12), transparent 60%),
+        rgba(12,18,34,0.78);
+    }
+
+    .next-action {
+      gap: 13px;
+      font-size: clamp(1.25rem, 3vw, 1.65rem);
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.035em;
+    }
+
+    .arrow {
+      color: var(--violet);
+      font-size: 1.5em;
+      font-weight: 400;
+    }
+
+    .cycle-note {
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+
+    .action-owner {
+      margin-top: 26px;
+      padding-top: 17px;
+      border-top: 1px solid var(--line);
+    }
+
+    .action-owner-name {
+      margin-top: 5px;
+      color: var(--violet);
+      font-size: 1rem;
+      font-weight: 750;
+    }
+
+    .workflow-panel h2 { margin-bottom: 18px; }
+
+    .workflow-steps {
+      display: grid;
+      gap: 5px;
+    }
+
+    .workflow-node {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 43px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(255,255,255,0.025);
+      color: #dce2ef;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.035em;
+    }
+
+    .workflow-node::before {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      content: "";
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .workflow-node.active {
+      border-color: rgba(177,140,255,0.36);
+      background: rgba(177,140,255,0.08);
+      color: white;
+    }
+
+    .workflow-node.active::before {
+      background: var(--violet);
+      box-shadow: 0 0 10px var(--violet);
+    }
+
+    .workflow-node.complete::before { background: var(--mint); }
+
+    .workflow-arrow {
+      padding-left: 15px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 22px, 620px); padding-top: 22px; }
+      .topbar { align-items: flex-start; }
+      .sync { margin-top: 5px; }
+      .command-strip { grid-template-columns: 1fr; }
+      .dashboard { grid-template-columns: 1fr; gap: 18px; }
+      .agent-card { padding: 24px; }
+      .agent-heading { margin-bottom: 30px; }
+      .lower-grid { grid-template-columns: 1fr; }
+      .panel { padding: 24px; }
+    }
+
+    @media (max-width: 430px) {
+      .eyebrow { display: none; }
+      .command-meta { padding: 20px; }
+      .meta-item { padding-right: 10px; }
+      .meta-item:last-child { padding-left: 14px; }
+      .timeline-item { gap: 18px; }
+      .timeline::before { left: 56px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 28 28" fill="none">
+            <path d="M5 20V8M23 20V8M5 14h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="5" cy="14" r="2.5" fill="#7c9cff"/>
+            <circle cx="23" cy="14" r="2.5" fill="#4de3b6"/>
+          </svg>
+        </div>
+        <div>
+          <h1>AI 协作桥接看板</h1>
+          <p class="eyebrow">协作状态 · V0.3</p>
+        </div>
+      </div>
+      <p class="sync">原型模式</p>
+    </header>
+
+    <section class="command-strip" aria-label="桥接控制摘要">
+      <div class="command-summary">
+        <p class="micro-label">桥接状态</p>
+        <p class="bridge-state" id="bridge-status">等待 GPT 审核</p>
+        <div class="current-task-block">
+          <p class="micro-label">当前任务</p>
+          <p class="mission-value" id="current-task">创建 AI 协作桥接看板 V0.3</p>
+        </div>
+      </div>
+      <div class="command-meta">
+        <div class="meta-item">
+          <p class="micro-label">当前负责人</p>
+          <p class="meta-value" id="current-owner">GPT</p>
+        </div>
+        <div class="meta-item">
+          <p class="micro-label">开始时间</p>
+          <p class="meta-value" id="started-time">17:00</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard" aria-label="角色状态总览">
+      <article class="agent-card gpt">
+        <div class="agent-heading">
+          <div>
+            <h2 class="agent-name">GPT</h2>
+            <p class="role" id="gpt-role">策略 / 审核代理</p>
+          </div>
+          <div class="agent-icon" aria-hidden="true">G</div>
+        </div>
+        <div class="status-row">
+          <span class="micro-label">当前状态</span>
+          <span class="status-pill reviewing" id="gpt-status">审核中</span>
+        </div>
+        <div class="latest">
+          <p class="micro-label">最近操作</p>
+          <p id="gpt-action">正在审核 PR #12</p>
+        </div>
+      </article>
+
+      <article class="agent-card codex">
+        <div class="agent-heading">
+          <div>
+            <h2 class="agent-name">Codex</h2>
+            <p class="role" id="codex-role">执行代理</p>
+          </div>
+          <div class="agent-icon" aria-hidden="true">C</div>
+        </div>
+        <div class="status-row">
+          <span class="micro-label">当前状态</span>
+          <span class="status-pill completed" id="codex-status">已完成</span>
+        </div>
+        <div class="latest">
+          <p class="micro-label">最近操作</p>
+          <p id="codex-action">已创建拉取请求</p>
+        </div>
+      </article>
+
+      <article class="agent-card human">
+        <div class="agent-heading">
+          <div>
+            <h2 class="agent-name">人工</h2>
+            <p class="role" id="human-role">最终审批</p>
+          </div>
+          <div class="agent-icon" aria-hidden="true">H</div>
+        </div>
+        <div class="status-row">
+          <span class="micro-label">当前状态</span>
+          <span class="status-pill waiting" id="human-status">等待中</span>
+        </div>
+        <div class="latest">
+          <p class="micro-label">最近操作</p>
+          <p id="human-action">等待批准或合并</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="lower-grid">
+      <article class="panel">
+        <h2>任务时间线</h2>
+        <div class="timeline" id="timeline">
+          <div class="timeline-item"><span class="time">17:00</span><span class="event-dot"></span><p class="event-copy"><strong>GPT</strong> 创建任务</p></div>
+          <div class="timeline-item"><span class="time">17:05</span><span class="event-dot"></span><p class="event-copy"><strong>Codex</strong> 开始执行</p></div>
+          <div class="timeline-item"><span class="time">17:20</span><span class="event-dot"></span><p class="event-copy"><strong>Codex</strong> 创建 PR #12</p></div>
+          <div class="timeline-item"><span class="time">17:25</span><span class="event-dot"></span><p class="event-copy"><strong>GPT</strong> 开始审核</p></div>
+        </div>
+      </article>
+
+      <div class="side-stack">
+        <aside class="panel next-panel">
+          <div>
+            <h2>下一步操作</h2>
+            <p class="next-action"><span class="arrow" aria-hidden="true">→</span><span id="next-action">审核 PR #12</span></p>
+            <div class="action-owner">
+              <p class="micro-label">负责人</p>
+              <p class="action-owner-name" id="next-action-owner">GPT</p>
+            </div>
+          </div>
+          <p class="cycle-note">完成审核后交由人工审批。</p>
+        </aside>
+
+        <article class="panel workflow-panel">
+          <h2>任务流程</h2>
+          <div class="workflow-steps" aria-label="从 GPT 到人工审批的任务流程">
+            <div class="workflow-node complete">GPT</div>
+            <div class="workflow-arrow" aria-hidden="true">↓</div>
+            <div class="workflow-node complete">Codex</div>
+            <div class="workflow-arrow" aria-hidden="true">↓</div>
+            <div class="workflow-node complete">GitHub</div>
+            <div class="workflow-arrow" aria-hidden="true">↓</div>
+            <div class="workflow-node active">GPT 审核</div>
+            <div class="workflow-arrow" aria-hidden="true">↓</div>
+            <div class="workflow-node">人工审批</div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusClasses = ["idle", "thinking", "reviewing", "working", "running", "waiting", "completed"];
+    const statusLabels = {
+      IDLE: "空闲",
+      THINKING: "思考中",
+      REVIEWING: "审核中",
+      WORKING: "执行中",
+      RUNNING: "运行中",
+      WAITING: "等待中",
+      COMPLETED: "已完成"
+    };
+    const statusTones = {
+      IDLE: "idle",
+      THINKING: "thinking",
+      REVIEWING: "reviewing",
+      WORKING: "working",
+      RUNNING: "running",
+      WAITING: "waiting",
+      COMPLETED: "completed"
+    };
+    const bridgeStatusLabels = {
+      RUNNING: "运行中",
+      WAITING: "等待中",
+      COMPLETED: "已完成",
+      WAITING_FOR_GPT_REVIEW: "等待 GPT 审核"
+    };
+
+    function setStatus(id, value) {
+      const node = document.getElementById(id);
+      if (!node || !value) return;
+      node.textContent = statusLabels[value] || value;
+      node.classList.remove(...statusClasses);
+      node.classList.add(statusTones[value] || "idle");
+    }
+
+    function applyState(data) {
+      document.getElementById("current-task").textContent = data.currentTask;
+      document.getElementById("current-owner").textContent = data.currentOwner;
+      document.getElementById("started-time").textContent = data.startedTime;
+      document.getElementById("bridge-status").textContent = bridgeStatusLabels[data.bridgeStatus] || data.bridgeStatus;
+      document.getElementById("gpt-role").textContent = data.gpt.role;
+      document.getElementById("gpt-action").textContent = data.gpt.latestAction;
+      document.getElementById("codex-role").textContent = data.codex.role;
+      document.getElementById("codex-action").textContent = data.codex.latestAction;
+      document.getElementById("human-role").textContent = data.human.role;
+      document.getElementById("human-action").textContent = data.human.latestAction;
+      document.getElementById("next-action").textContent = data.nextAction;
+      document.getElementById("next-action-owner").textContent = data.nextActionOwner;
+      setStatus("gpt-status", data.gpt.status);
+      setStatus("codex-status", data.codex.status);
+      setStatus("human-status", data.human.status);
+
+      const timeline = document.getElementById("timeline");
+      timeline.replaceChildren(...data.timeline.map((event) => {
+        const item = document.createElement("div");
+        item.className = "timeline-item";
+
+        const time = document.createElement("span");
+        time.className = "time";
+        time.textContent = event.time;
+
+        const dot = document.createElement("span");
+        dot.className = "event-dot";
+
+        const copy = document.createElement("p");
+        copy.className = "event-copy";
+        const actor = document.createElement("strong");
+        actor.textContent = event.actor;
+        copy.append(actor, ` ${event.action}`);
+
+        item.append(time, dot, copy);
+        return item;
+      }));
+    }
+
+    // Future data adapters, including GitHub, should resolve to this same state shape.
+    function loadDashboardState() {
+      return fetch("status.json").then((response) => {
+        if (!response.ok) throw new Error("Could not load status.json");
+        return response.json();
+      });
+    }
+
+    loadDashboardState()
+      .then(applyState)
+      .catch(() => {
+        // The visible Chinese prototype state remains available when index.html is opened via file://.
+      });
+  </script>
+</body>
+</html>
+
