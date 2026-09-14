@@ -1,40 +1,65 @@
-# AI 协作桥接看板 V0.3
+# AI 协作桥接看板 V0.4
 
 ## 用途
 
-AI 协作桥接看板是一个静态控制看板原型，用于清晰展示 GPT、Codex 与人工审批之间的协作状态。页面集中显示当前任务、负责人、三个角色的状态、任务时间线和下一步操作。
+AI 协作桥接看板是一个本地、只读的 GitHub PR 监控看板，用于清晰展示 GPT、Codex 与人工审批之间的协作状态。页面集中显示最新 PR 编号、PR 状态、当前阶段、最后更新时间、三个角色的状态、任务时间线和下一步操作。
 
-本版本没有后端、数据库、身份验证或外部服务，也不会执行任何外部写入操作。
+浏览器只访问本机 `127.0.0.1` 上的只读桥接层。桥接层复用本机 GitHub CLI 或 Git Credential Manager 登录，仅通过 GitHub REST API 的 `GET` 请求读取私有仓库 `rivers205/amazon-ops-core`；凭据不会进入浏览器、页面文件、配置文件、日志或 Git 提交。系统不会执行外部写入，也不包含 Amazon API。
 
 ## 本地打开
 
-可以直接在浏览器中打开 `index.html`。页面内置了中文示例状态，因此通过本地文件方式打开时仍可正常显示。
-
-若要让页面读取 `status.json`，请在 `bridge-dashboard` 目录运行任意静态文件服务器，例如：
+先确认 GitHub CLI 已登录：
 
 ```sh
-python -m http.server 8000
+gh auth status
 ```
 
-然后访问 `http://localhost:8000`。
+若 `gh auth status` 显示已登录，在 `bridge-dashboard` 目录直接启动无依赖本地桥接：
 
-## 状态数据结构
+```sh
+node server.js
+```
 
-`status.json` 使用英文属性名和英文状态枚举，界面通过 `index.html` 中的中文映射表显示状态。
+若本机没有已登录的 `gh`，请创建仅限 `rivers205/amazon-ops-core` 的 fine-grained PAT，并只授予以下读取权限：
 
-- GPT 状态：`IDLE`、`THINKING`、`REVIEWING` 或 `COMPLETED`
-- Codex 状态：`IDLE`、`WORKING` 或 `COMPLETED`
-- 人工状态：`IDLE`、`WAITING` 或 `COMPLETED`
-- 桥接状态示例：`WAITING_FOR_GPT_REVIEW`
-- 当前负责人：`GPT`、`CODEX` 或 `HUMAN`
+- Contents：Read-only
+- Issues：Read-only
+- Pull requests：Read-only
+- Commit statuses：Read-only
+- Metadata：GitHub 自动提供读取权限
 
-## GitHub 集成准备
+然后运行安全启动脚本：
 
-V0.3 仅预留数据结构，不连接 GitHub API：
+```powershell
+.\start-readonly.ps1
+```
 
-- `sourceType` 标记当前数据来源为 `STATIC`。
-- `github.repository` 保存未来目标仓库名称。
-- `github.integrationStatus` 明确标记为 `NOT_CONNECTED`。
-- `loadDashboardState()` 将数据加载与界面渲染分离；未来适配器只需返回相同的数据结构。
+脚本会遮蔽输入，只把凭据放入当前 Node.js 子进程环境；服务结束后立即清除环境变量并释放内存，不把凭据写入任何项目文件。
 
-接入 GitHub 时，可以在获得明确授权后增加只读或读写适配器，并在运行环境中安全提供凭据。当前版本不会发送外部请求，不包含 Amazon API，也不会改动任何远程仓库。
+访问 `http://127.0.0.1:8765/`。不能再通过 `file://` 直接打开页面，因为浏览器不会也不应直接持有私有仓库凭据。
+
+## 数据来源
+
+`status.json` 不保存演示状态或凭据，仅保存英文配置键、目标仓库和本地桥接地址。浏览器只请求：
+
+```text
+GET http://127.0.0.1:8765/api/github-state
+```
+
+桥接层将访问范围固定为 `rivers205/amazon-ops-core` 的 Pull Requests、Issues、Commits 和 Commit Status。所有 GitHub 请求均为 `GET`；服务拒绝浏览器的 `POST`、`PUT`、`PATCH` 和 `DELETE`。
+
+## 身份验证
+
+桥接层优先调用已登录的 `gh api --method GET`。若 `gh` 不可用，可通过 `start-readonly.ps1` 在进程环境中提供仓库级 fine-grained PAT；最后才尝试 Git Credential Manager。凭据只短暂保留在进程内存中，并只发送给 `https://api.github.com`。任何身份验证失败都会返回通用错误，不会把命令输出、Token、PAT、Cookie 或响应细节发送给浏览器。
+
+## 阶段映射
+
+GitHub 不提供 GPT、Codex 或人工负责人字段，因此 V0.4 根据 PR 生命周期应用以下只读显示规则：
+
+- 暂无 PR：等待 Codex 创建 PR。
+- 草稿 PR：Codex 执行中。
+- 开放且非草稿 PR：等待 GPT 审核。
+- 已合并 PR：流程完成，人工审批完成。
+- 已关闭但未合并 PR：等待人工决定是否重新打开或新建 PR。
+
+所有用户界面文本保持中文；内部状态键保持英文。页面每 120 秒通过本地桥接重新读取一次，并在读取失败时显示错误而不伪造状态。

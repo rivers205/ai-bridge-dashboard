@@ -1,53 +1,11 @@
 {
-  "schemaVersion": 1,
-  "version": "0.3",
-  "sourceType": "STATIC",
-  "bridgeStatus": "WAITING_FOR_GPT_REVIEW",
-  "currentTask": "创建 AI 协作桥接看板 V0.3",
-  "currentOwner": "GPT",
-  "startedTime": "17:00",
-  "gpt": {
-    "role": "策略 / 审核代理",
-    "status": "REVIEWING",
-    "latestAction": "正在审核 PR #12"
-  },
-  "codex": {
-    "role": "执行代理",
-    "status": "COMPLETED",
-    "latestAction": "已创建拉取请求"
-  },
-  "human": {
-    "role": "最终审批",
-    "status": "WAITING",
-    "latestAction": "等待批准或合并"
-  },
-  "timeline": [
-    {
-      "time": "17:00",
-      "actor": "GPT",
-      "action": "创建任务"
-    },
-    {
-      "time": "17:05",
-      "actor": "Codex",
-      "action": "开始执行"
-    },
-    {
-      "time": "17:20",
-      "actor": "Codex",
-      "action": "创建 PR #12"
-    },
-    {
-      "time": "17:25",
-      "actor": "GPT",
-      "action": "开始审核"
-    }
-  ],
-  "nextAction": "审核 PR #12",
-  "nextActionOwner": "GPT",
-  "github": {
-    "repository": "rivers205/ai-bridge-dashboard",
-    "integrationStatus": "NOT_CONNECTED",
-    "pullRequestNumber": 12
+  "schemaVersion": 2,
+  "version": "0.4",
+  "sourceType": "LOCAL_GITHUB_BRIDGE",
+  "repository": "rivers205/amazon-ops-core",
+  "pollIntervalMs": 120000,
+  "bridge": {
+    "endpoint": "/api/github-state",
+    "requestMethod": "GET"
   }
 }
